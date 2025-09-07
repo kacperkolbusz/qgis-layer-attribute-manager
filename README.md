@@ -40,10 +40,9 @@ A QGIS plugin for managing and editing attribute tables for all vector layers in
 - QGIS 3.0 or higher
 
 ## If you see room for improvement, contact me:
-    kacperkolbusz@pm.me
+    kk.at.work@pm.me
 
 
 ## Author
 
 Kacper Kolbusz
-

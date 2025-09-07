@@ -30,7 +30,6 @@ class AttributeManagerPlugin:
         self.dialog = None
         self.toolbar = None
         self.action_open_manager = None
-        self.action_settings = None
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
@@ -70,17 +69,7 @@ class AttributeManagerPlugin:
                 self.logger.warning(f"Could not load main icon: {e}")
                 main_icon = QIcon()
             
-            try:
-                settings_icon = QIcon(os.path.join(plugin_dir, 'icons', 'settings.ico'))
-                if settings_icon.isNull():
-                    # Create a fallback icon
-                    settings_icon = QIcon()
-                    self.logger.warning("Settings icon could not be loaded, using fallback")
-            except Exception as e:
-                self.logger.warning(f"Could not load settings icon: {e}")
-                settings_icon = QIcon()
-            
-            # Create actions with fallback icons
+            # Create action with fallback icon
             self.action_open_manager = QAction(
                 main_icon,
                 'Open Attribute Manager',
@@ -89,21 +78,11 @@ class AttributeManagerPlugin:
             self.action_open_manager.setToolTip('Open the Layer Attribute Manager dialog')
             self.action_open_manager.triggered.connect(self.open_attribute_manager)
             
-            self.action_settings = QAction(
-                settings_icon,
-                'Settings',
-                self.iface.mainWindow()
-            )
-            self.action_settings.setToolTip('Open plugin settings')
-            self.action_settings.triggered.connect(self.show_settings)
-            
-            # Add actions to toolbar
+            # Add action to toolbar
             self.toolbar.addAction(self.action_open_manager)
-            self.toolbar.addAction(self.action_settings)
             
             # Add to menu
             self.iface.addPluginToMenu('Layer Attribute Manager', self.action_open_manager)
-            self.iface.addPluginToMenu('Layer Attribute Manager', self.action_settings)
             
             # Connect project signals with error handling
             try:
@@ -135,16 +114,6 @@ class AttributeManagerPlugin:
             QMessageBox.critical(None, 'Error Opening Manager', 
                                 f'Error opening attribute manager:\n{str(e)}')
 
-    def show_settings(self):
-        """Show the plugin settings dialog."""
-        try:
-            from .settings_dialog import SettingsDialog
-            settings_dialog = SettingsDialog(self.iface.mainWindow())
-            settings_dialog.exec_()
-        except Exception as e:
-            self.logger.error(f"Error opening settings: {str(e)}")
-            QMessageBox.critical(None, 'Error Opening Settings', 
-                                f'Error opening settings:\n{str(e)}')
 
     def on_layer_added(self, layers):
         """Handle when new layers are added to the project."""
@@ -175,11 +144,6 @@ class AttributeManagerPlugin:
                 except Exception as e:
                     self.logger.warning(f"Could not remove open manager menu: {e}")
             
-            if hasattr(self, 'action_settings') and self.action_settings:
-                try:
-                    self.iface.removePluginMenu('Layer Attribute Manager', self.action_settings)
-                except Exception as e:
-                    self.logger.warning(f"Could not remove settings menu: {e}")
             
             # Disconnect signals
             if hasattr(self, 'project') and self.project:

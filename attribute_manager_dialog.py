@@ -609,6 +609,9 @@ class AttributeManagerDialog(QDialog):
         """Initialize the user interface."""
         layout = QVBoxLayout()
         
+        # Title and Settings button row
+        title_layout = QHBoxLayout()
+        
         # Title
         self.title_label = QLabel('Layer Attribute Manager')
         title_font = QFont()
@@ -616,7 +619,30 @@ class AttributeManagerDialog(QDialog):
         title_font.setBold(True)
         self.title_label.setFont(title_font)
         self.title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.title_label)
+        title_layout.addWidget(self.title_label)
+        
+        # Settings button in upper right corner
+        self.settings_btn = QPushButton('⚙️')
+        self.settings_btn.setToolTip('Open plugin settings')
+        self.settings_btn.setFixedSize(30, 30)
+        self.settings_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:pressed {
+                background-color: #d0d0d0;
+            }
+        """)
+        self.settings_btn.clicked.connect(self.show_settings)
+        title_layout.addWidget(self.settings_btn)
+        
+        layout.addLayout(title_layout)
         
         # Description
         self.desc_label = QLabel('Manage and edit attribute tables for all vector layers in one interface')
@@ -776,5 +802,15 @@ class AttributeManagerDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, 'Error Loading Data', f"Failed to load layer '{layer_name}':\n{str(e)}")
                 self.status_label.setText(f"Error loading layer: {str(e)}")
+
+    def show_settings(self):
+        """Show the plugin settings dialog."""
+        try:
+            from .settings_dialog import SettingsDialog
+            settings_dialog = SettingsDialog(self)
+            settings_dialog.exec_()
+        except Exception as e:
+            QMessageBox.critical(self, 'Error Opening Settings', 
+                                f'Error opening settings:\n{str(e)}')
 
     
