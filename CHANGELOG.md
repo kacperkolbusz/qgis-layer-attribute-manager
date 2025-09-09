@@ -7,11 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.1]
 
+### Added
+- **Help System**: 
+  - Interactive help window with collapsible sections
+  - Help button (❓) in top-left corner of main dialog
+  - Comprehensive user guide covering all plugin features
+  - Step-by-step instructions for Excel integration
+- **Data Validation & Visual Feedback**:
+  - Real-time data type validation for pasted and edited data
+  - Red highlighting for incompatible data (e.g., text in number fields)
+  - Yellow highlighting for valid but unsaved changes
+  - Enhanced paste warnings with validation feedback
+- **User-Friendly Field Type Display**:
+  - Simplified field type names in column headers (text, integer, decimal, date, boolean)
+  - Clearer data type expectations for users
+  - Improved column headers with two-line format showing field name and type
+
 ### Changed
 - **UI/UX Improvements**: Moved settings button from QGIS toolbar into the main manager window
 - **GUI Decluttering**: Removed separate settings button from toolbar to reduce interface clutter
 - **Settings Access**: Settings button now located in upper right corner of the Layer Attribute Manager dialog
 - **Better Integration**: Settings dialog now opens with proper parent window relationship
+- **Enhanced Button Design**: Increased help and settings button sizes (40x40px) for better visibility
+- **Improved Column Headers**: Taller headers (50px) to accommodate field type information
+- **Better Data Validation**: Enhanced validation logic with user-friendly error messages
 
 ### Technical Changes
 - Removed `action_settings` from main plugin class
@@ -19,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added settings button to `AttributeManagerDialog` with custom styling
 - Improved modal dialog behavior for settings window
 - Cleaned up plugin unload method to remove settings menu references
+- Added `HelpWindow` class with collapsible sections for better user guidance
+- Implemented `CollapsibleSection` widget for organized help content
+- Added data validation functions: `validate_data_for_field()` and `get_user_friendly_type_name()`
+- Enhanced paste functionality with real-time validation and visual feedback
+- Updated cell change handler to include data type validation
+- Improved error handling and user feedback for data compatibility issues
 
 ## [1.0.0]
 
@@ -66,7 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Key Changes |
 |---------|-------------|
-| 1.0.1 | UI decluttering, settings moved to manager window |
+| 1.0.1 | Help system, data validation, user-friendly field types, UI improvements |
 | 1.0.0 | Initial release with full functionality |
 
 ## Future Roadmap
@@ -93,7 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Advanced Copy/Paste**: Smart paste options, data mapping, and format detection
 
 ### Known Issues
-- None currently reported
+- Slow loading time on layers with huge amount of rows
 
 ### Support
 For bug reports, feature requests, or general support, please contact:

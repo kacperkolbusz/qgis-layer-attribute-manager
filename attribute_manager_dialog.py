@@ -10,7 +10,7 @@ from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                  QCheckBox, QProgressBar, QMessageBox,
                                  QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
                                  QTabWidget, QWidget, QLineEdit, QSpinBox, QFormLayout,
-                                 QMenu, QApplication)
+                                 QMenu, QApplication, QScrollArea, QFrame)
 from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QTimer
 from qgis.PyQt.QtGui import QFont, QIcon
 from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsField, NULL
@@ -100,6 +100,11 @@ class AttributeTableWidget(QWidget):
             self.table.setSelectionBehavior(QTableWidget.SelectItems)  # Use SelectItems for compatibility
             self.table.setSelectionMode(QTableWidget.ContiguousSelection)  # Use ContiguousSelection for better compatibility
             self.table.itemChanged.connect(self.on_cell_changed)
+            
+            # Set header height to accommodate two-line headers
+            header = self.table.horizontalHeader()
+            header.setDefaultSectionSize(120)  # Wider columns for field names and types
+            header.setMinimumHeight(50)  # Taller header for two-line text
             self.table.setContextMenuPolicy(Qt.CustomContextMenu)
             self.table.customContextMenuRequested.connect(self.show_context_menu)
             
@@ -122,6 +127,11 @@ class AttributeTableWidget(QWidget):
             self.table.setSelectionBehavior(QTableWidget.SelectItems)
             self.table.setSelectionMode(QTableWidget.SingleSelection)
             self.table.itemChanged.connect(self.on_cell_changed)
+            
+            # Set header height to accommodate two-line headers
+            header = self.table.horizontalHeader()
+            header.setDefaultSectionSize(120)  # Wider columns for field names and types
+            header.setMinimumHeight(50)  # Taller header for two-line text
         
         layout.addWidget(self.table)
         
@@ -138,6 +148,12 @@ class AttributeTableWidget(QWidget):
             fields = self.layer.fields()
             field_names = [field.name() for field in fields]
             
+            # Create headers with field types
+            header_labels = []
+            for field in fields:
+                field_type = self.get_user_friendly_type_name(field.typeName())
+                header_labels.append(f"{field.name()}\n({field_type})")
+            
             # Update field filter
             self.field_filter.clear()
             self.field_filter.addItem('All Fields')
@@ -145,7 +161,7 @@ class AttributeTableWidget(QWidget):
             
             # Setup table
             self.table.setColumnCount(len(field_names))
-            self.table.setHorizontalHeaderLabels(field_names)
+            self.table.setHorizontalHeaderLabels(header_labels)
             
             # Get features
             features = list(self.layer.getFeatures())
@@ -332,8 +348,17 @@ class AttributeTableWidget(QWidget):
             
             if new_value != original_value:
                 self.changed_cells.add((row, col))
-                # Highlight changed cell
-                item.setBackground(Qt.yellow)
+                
+                # Validate data against field type
+                field = self.get_field_by_column(col)
+                if field:
+                    is_valid, _ = self.validate_data_for_field(new_value, field)
+                    if is_valid:
+                        item.setBackground(Qt.yellow)  # Valid but unsaved
+                    else:
+                        item.setBackground(Qt.red)  # Invalid data
+                else:
+                    item.setBackground(Qt.yellow)  # Fallback to yellow
             else:
                 self.changed_cells.discard((row, col))
                 # Reset background
@@ -543,6 +568,7 @@ class AttributeTableWidget(QWidget):
             
             # Paste the data
             changes_made = 0
+            invalid_cells = 0
             for i, row in enumerate(rows):
                 if start_row + i >= self.table.rowCount():
                     break
@@ -567,14 +593,33 @@ class AttributeTableWidget(QWidget):
                             item.setText(cell_text)
                             # Mark as changed
                             self.changed_cells.add((target_row, target_col))
-                            item.setBackground(Qt.yellow)
+                            
+                            # Validate data against field type
+                            field = self.get_field_by_column(target_col)
+                            if field:
+                                is_valid, _ = self.validate_data_for_field(cell_text, field)
+                                if is_valid:
+                                    item.setBackground(Qt.yellow)  # Valid but unsaved
+                                else:
+                                    item.setBackground(Qt.red)  # Invalid data
+                                    invalid_cells += 1
+                            else:
+                                item.setBackground(Qt.yellow)  # Fallback to yellow
+                            
                             changes_made += 1
             
             if changes_made > 0:
-                QMessageBox.information(self, "Paste Successful", 
-                                      f"Successfully pasted {changes_made} cells!\n\n"
-                                      "Click 'Update Layer' to save changes to QGIS.")
-                self.status_label.setText(f"Pasted {changes_made} cells - click 'Update Layer' to save")
+                if invalid_cells > 0:
+                    QMessageBox.warning(self, "Paste Complete with Warnings", 
+                                      f"Pasted {changes_made} cells, but {invalid_cells} contain invalid data (shown in RED).\n\n"
+                                      "Please fix the red cells before saving.\n"
+                                      "Click 'Update Layer' to save valid changes to QGIS.")
+                    self.status_label.setText(f"Pasted {changes_made} cells, {invalid_cells} invalid (RED) - fix before saving")
+                else:
+                    QMessageBox.information(self, "Paste Successful", 
+                                          f"Successfully pasted {changes_made} cells!\n\n"
+                                          "Click 'Update Layer' to save changes to QGIS.")
+                    self.status_label.setText(f"Pasted {changes_made} cells - click 'Update Layer' to save")
             else:
                 QMessageBox.information(self, "Paste Complete", 
                                       "Data pasted, but no changes were detected.\n\n"
@@ -584,7 +629,250 @@ class AttributeTableWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, 'Paste Error', f"Failed to paste data:\n{str(e)}")
             self.status_label.setText(f"Paste error: {str(e)}")
+
+    def validate_data_for_field(self, value, field):
+        """Validate if a value is compatible with a field type."""
+        if not value or value.strip() == '':
+            return True, value  # Empty values are always valid
+        
+        field_type_name = self.get_user_friendly_type_name(field.typeName())
+        
+        try:
+            if field_type_name == 'integer':
+                # Try to convert to integer
+                int(value)
+                return True, value
+            elif field_type_name == 'decimal':
+                # Try to convert to float
+                float(value)
+                return True, value
+            elif field_type_name == 'date':
+                # For dates, we'll be more lenient - just check if it's not obviously wrong
+                # QGIS will handle the actual date parsing
+                return True, value
+            elif field_type_name == 'boolean':
+                # For booleans, accept common boolean representations
+                bool_value = value.lower().strip()
+                if bool_value in ['true', 'false', '1', '0', 'yes', 'no', 'y', 'n']:
+                    return True, value
+                else:
+                    return False, value
+            else:
+                # Text fields accept anything
+                return True, value
+        except (ValueError, TypeError):
+            return False, value
+
+    def get_field_by_column(self, column):
+        """Get the field object for a given column index."""
+        if hasattr(self, 'layer') and self.layer:
+            fields = self.layer.fields()
+            if 0 <= column < len(fields):
+                return fields[column]
+        return None
+
+    def get_user_friendly_type_name(self, qgis_type_name):
+        """Convert QGIS field type names to user-friendly names."""
+        type_name_lower = qgis_type_name.lower()
+        
+        # String types
+        if any(keyword in type_name_lower for keyword in ['string', 'text', 'varchar', 'char']):
+            return 'text'
+        
+        # Integer types
+        elif any(keyword in type_name_lower for keyword in ['int', 'integer', 'long', 'bigint']):
+            return 'integer'
+        
+        # Decimal/Real types
+        elif any(keyword in type_name_lower for keyword in ['real', 'double', 'float', 'decimal', 'numeric']):
+            return 'decimal'
+        
+        # Date types
+        elif any(keyword in type_name_lower for keyword in ['date', 'datetime', 'timestamp', 'time']):
+            return 'date'
+        
+        # Boolean types
+        elif any(keyword in type_name_lower for keyword in ['bool', 'boolean']):
+            return 'boolean'
+        
+        # Default fallback
+        else:
+            return qgis_type_name.lower()
+
+
+class CollapsibleSection(QWidget):
+    """A collapsible section widget for the help window."""
     
+    def __init__(self, title, content, parent=None):
+        super().__init__(parent)
+        self.is_collapsed = True
+        self.init_ui(title, content)
+        
+    def init_ui(self, title, content):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Header button
+        self.header_btn = QPushButton(f"▼ {title}")
+        self.header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 8px;
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+        self.header_btn.clicked.connect(self.toggle)
+        layout.addWidget(self.header_btn)
+        
+        # Content widget
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout()
+        self.content_layout.setContentsMargins(10, 5, 10, 10)
+        
+        # Add content as label
+        content_label = QLabel(content)
+        content_label.setWordWrap(True)
+        content_label.setStyleSheet("""
+            QLabel {
+                padding: 5px;
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+            }
+        """)
+        self.content_layout.addWidget(content_label)
+        
+        self.content_widget.setLayout(self.content_layout)
+        self.content_widget.setVisible(False)
+        layout.addWidget(self.content_widget)
+        
+        self.setLayout(layout)
+        
+    def toggle(self):
+        self.is_collapsed = not self.is_collapsed
+        self.content_widget.setVisible(not self.is_collapsed)
+        
+        if self.is_collapsed:
+            self.header_btn.setText(f"▶ {self.header_btn.text()[2:]}")
+        else:
+            self.header_btn.setText(f"▼ {self.header_btn.text()[2:]}")
+
+
+class HelpWindow(QDialog):
+    """Help window with collapsible sections."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Layer Attribute Manager - Help')
+        self.setModal(False)
+        self.resize(600, 500)
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Title
+        title_label = QLabel('Layer Attribute Manager - Help')
+        title_font = QFont()
+        title_font.setPointSize(16)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("QLabel { margin: 10px; }")
+        layout.addWidget(title_label)
+        
+        # Scroll area for content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        # Content widget
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setSpacing(5)
+        
+        # Help sections
+        sections = [
+            ("What is this plugin?", 
+             "A QGIS plugin that lets you view and edit attribute tables for all your vector layers in one place."),
+            
+            ("1. Open the plugin", 
+             "• Click the \"Open Attribute Manager\" button in the QGIS toolbar\n"
+             "• Or go to Plugins → Layer Attribute Manager"),
+            
+            ("2. Select a layer", 
+             "• Choose a layer from the dropdown menu\n"
+             "• Click \"Refresh Layers\" if you don't see your layer"),
+            
+            ("3. Edit data", 
+             "• Click on any cell to edit it directly\n"
+             "• Use the search box to find specific data\n"
+             "• Filter by specific fields using the \"Field\" dropdown"),
+            
+            ("4. Save your changes", 
+             "• Click \"Update Layer\" to save changes to your layer\n"
+             "• Click \"Revert Changes\" to undo all changes"),
+            
+            ("5. Copy/Paste from Excel", 
+             "To paste data from Excel:\n"
+             "1. Copy data in Excel (Ctrl+C)\n"
+             "2. Click on the cell where you want to start pasting\n"
+             "3. Click \"Paste from Spreadsheet\"\n\n"
+             "To copy data to Excel:\n"
+             "1. Select cells in the table\n"
+             "2. Click \"Copy Selection\"\n"
+             "3. Paste in Excel (Ctrl+V)\n\n"
+             "Important paste tips:\n"
+             "• ALWAYS check that your data format matches the field types (text, integer, decimal, date, boolean)\n"
+             "• Incompatible data will appear RED - fix these before saving\n"
+             "• After pasting, cells will appear yellow - this means changes are temporary\n"
+             "• Click \"Update Layer\" to permanently save your changes to the QGIS layer"),
+            
+            ("Tips", 
+             "• Changes are only saved when you click \"Update Layer\"\n"
+             "• Use the search to quickly find specific records\n"
+             "• The plugin works with all vector layers in your project"),
+            
+            ("Need help?", 
+             "Contact: kk.help@pm.me")
+        ]
+        
+        # Add collapsible sections
+        for title, content in sections:
+            section = CollapsibleSection(title, content)
+            content_layout.addWidget(section)
+        
+        content_layout.addStretch()
+        content_widget.setLayout(content_layout)
+        scroll_area.setWidget(content_widget)
+        layout.addWidget(scroll_area)
+        
+        # Close button
+        close_btn = QPushButton('Close')
+        close_btn.clicked.connect(self.close)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        layout.addWidget(close_btn)
+        
+        self.setLayout(layout)
 
 
 class AttributeManagerDialog(QDialog):
@@ -612,6 +900,27 @@ class AttributeManagerDialog(QDialog):
         # Title and Settings button row
         title_layout = QHBoxLayout()
         
+        # Help button in upper left corner
+        self.help_btn = QPushButton('❓')
+        self.help_btn.setToolTip('Open help')
+        self.help_btn.setFixedSize(40, 40)
+        self.help_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:pressed {
+                background-color: #d0d0d0;
+            }
+        """)
+        self.help_btn.clicked.connect(self.show_help)
+        title_layout.addWidget(self.help_btn)
+        
         # Title
         self.title_label = QLabel('Layer Attribute Manager')
         title_font = QFont()
@@ -624,13 +933,13 @@ class AttributeManagerDialog(QDialog):
         # Settings button in upper right corner
         self.settings_btn = QPushButton('⚙️')
         self.settings_btn.setToolTip('Open plugin settings')
-        self.settings_btn.setFixedSize(30, 30)
+        self.settings_btn.setFixedSize(40, 40)
         self.settings_btn.setStyleSheet("""
             QPushButton {
                 background-color: #f0f0f0;
                 border: 1px solid #ccc;
                 border-radius: 4px;
-                font-size: 14px;
+                font-size: 18px;
             }
             QPushButton:hover {
                 background-color: #e0e0e0;
@@ -812,5 +1121,16 @@ class AttributeManagerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, 'Error Opening Settings', 
                                 f'Error opening settings:\n{str(e)}')
+
+    def show_help(self):
+        """Show the help window."""
+        try:
+            help_window = HelpWindow(self)
+            help_window.show()
+            help_window.raise_()
+            help_window.activateWindow()
+        except Exception as e:
+            QMessageBox.critical(self, 'Error Opening Help', 
+                                f'Error opening help:\n{str(e)}')
 
     

@@ -1,7 +1,7 @@
 [general]
 name=Layer Attribute Manager
 description=A plugin to manage and edit attribute tables for all vector layers in one interface
-version=1.0.0
+version=1.0.1
 qgisMinimumVersion=3.0
 qgisMaximumVersion=3.99
 homepage=https://github.com/kacperkolbusz/qgis-layer-attribute-manager
@@ -14,5 +14,3 @@ category=Database
 tags=attribute,vector,edit,table,excel
 experimental=False
 deprecated=False
-
-
